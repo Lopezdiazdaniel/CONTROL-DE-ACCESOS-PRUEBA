@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control de Recepción y Accesos</title>
@@ -38,7 +37,6 @@
             body {
                 background-color: #fff !important;
             }
-            /* Ocultar elementos que no deben salir en el PDF */
             nav, .modal, form, .btn, .card-title, .navbar, hr {
                 display: none !important;
             }
@@ -54,14 +52,12 @@
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            /* Mostrar únicamente la sección activa que se mande a imprimir */
             .seccion-contenido:not(.activa) {
                 display: none !important;
             }
             .seccion-contenido.activa {
                 display: block !important;
             }
-            /* Estilo limpio para la tabla en el PDF */
             table {
                 width: 100% !important;
                 border-collapse: collapse !important;
@@ -71,11 +67,11 @@
                 padding: 6px !important;
                 font-size: 9pt !important;
             }
-thead {
-    background-color: #f8f9fa !important;
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-}
+            thead {
+                background-color: #f8f9fa !important;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
         }
     </style>
 </head>
@@ -306,8 +302,25 @@ thead {
     <!-- Script de Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- Script de Lógica -->
-    <script>
+    <!-- Script de Conexión a Firebase y Lógica -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, updateDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+        // CONFIGURACIÓN DE FIREBASE (Sustituye por tus llaves reales de la consola)
+        const firebaseConfig = {
+            apiKey: "TU_API_KEY",
+            authDomain: "control-accesos-f41bd.firebaseapp.com",
+            projectId: "control-accesos-f41bd",
+            storageBucket: "control-accesos-f41bd.firebasestorage.app",
+            messagingSenderId: "53219467921",
+            appId: "1:53219467921:web:694cad6f23091b163d1530",
+            measurementId: "G-1SSHNCdYCZ"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
         const formRegistro = document.getElementById('registroForm');
         const formReporte = document.getElementById('reporteForm');
         const loginForm = document.getElementById('loginForm');
@@ -327,7 +340,6 @@ thead {
                 actualizarVistaGuardia(guardiaActivo);
             }
 
-            // Inicializar la hora actual en el input y mantenerla corriendo en vivo
             actualizarHoraActualInput();
             setInterval(actualizarHoraActualInput, 1000);
 
@@ -339,8 +351,9 @@ thead {
             const minutos = String(ahora.getMinutes()).padStart(2, '0');
             document.getElementById('fechaReporte').value = `${anio}-${mes}-${dia}T${horas}:${minutos}`;
 
-            cargarRegistrosLocalStorage();
-            cargarReportesLocalStorage();
+            // Cargar datos en tiempo real desde Firebase Firestore
+            escucharAccesosFirebase();
+            escucharReportesFirebase();
         });
 
         function actualizarHoraActualInput() {
@@ -371,7 +384,7 @@ thead {
             document.getElementById('lblGuardiaClave').innerText = claveOculta;
         }
 
-        function cambiarSeccion(seccion, elemento) {
+        window.cambiarSeccion = function(seccion, elemento) {
             document.querySelectorAll('.seccion-contenido').forEach(el => el.classList.remove('activa'));
             document.querySelectorAll('.navbar-nav .nav-link').forEach(el => {
                 el.classList.remove('active', 'fw-semibold');
@@ -383,8 +396,8 @@ thead {
             elemento.classList.remove('text-white-50');
         }
 
-        // --- LÓGICA DE ACCESOS ---
-        formRegistro.addEventListener('submit', function(e) {
+        // --- LÓGICA DE ACCESOS CON FIREBASE ---
+        formRegistro.addEventListener('submit', async function(e) {
             e.preventDefault();
 
             const guardiaActivo = JSON.parse(localStorage.getItem('guardia_activo'));
@@ -394,7 +407,6 @@ thead {
                 return;
             }
 
-            // Capturar la hora exacta del sistema en el preciso instante de enviar el formulario
             const ahoraExacto = new Date();
             const horaActualSistema = `${String(ahoraExacto.getHours()).padStart(2, '0')}:${String(ahoraExacto.getMinutes()).padStart(2, '0')}`;
 
@@ -405,16 +417,34 @@ thead {
                 color: document.getElementById('color').value,
                 asunto: document.getElementById('asunto').value,
                 noCasa: document.getElementById('noCasa').value,
-                horaEntrada: horaActualSistema, // Se usa la hora exacta del clic
+                horaEntrada: horaActualSistema,
                 horaSalida: '',
                 guardiaTurno: `${guardiaActivo.nombre} (Clave: ${guardiaActivo.clave})`
             };
-            agregarFilaAcceso(nuevoRegistro);
-            guardarRegistrosLocalStorage();
-            formRegistro.reset();
+
+            try {
+                await addDoc(collection(db, "accesos"), nuevoRegistro);
+                formRegistro.reset();
+            } catch (error) {
+                console.error("Error al registrar en Firebase:", error);
+                alert("Error al guardar en la nube.");
+            }
         });
 
-        function agregarFilaAcceso(datos) {
+        function escucharAccesosFirebase() {
+            onSnapshot(collection(db, "accesos"), (snapshot) => {
+                tablaActivos.innerHTML = '';
+                tablaHistorial.innerHTML = '';
+
+                snapshot.forEach((docSnapshot) => {
+                    const datos = docSnapshot.data();
+                    const id = docSnapshot.id;
+                    agregarFilaAcceso(datos, id);
+                });
+            });
+        }
+
+        function agregarFilaAcceso(datos, id) {
             const fila = document.createElement('tr');
             if (datos.horaSalida === '') {
                 fila.innerHTML = `
@@ -426,7 +456,7 @@ thead {
                     <td><strong>${datos.noCasa}</strong></td>
                     <td>${datos.horaEntrada}</td>
                     <td><span class="small fw-semibold text-dark">${datos.guardiaTurno}</span></td>
-                    <td><button class="btn btn-outline-danger btn-sm" onclick="registrarSalida(this)">Marcar Salida</button></td>
+                    <td><button class="btn btn-outline-danger btn-sm" onclick="marcarSalidaFirebase('${id}')">Marcar Salida</button></td>
                 `;
                 tablaActivos.appendChild(fila);
             } else {
@@ -445,74 +475,20 @@ thead {
             }
         }
 
-        window.registrarSalida = function(button) {
-            const fila = button.closest('tr');
-            const celdas = fila.querySelectorAll('td');
-
+        window.marcarSalidaFirebase = async function(id) {
             const ahoraSalida = new Date();
             const horaSalidaExacta = `${String(ahoraSalida.getHours()).padStart(2, '0')}:${String(ahoraSalida.getMinutes()).padStart(2, '0')}`;
 
-            const datosActualizados = {
-                nombre: celdas[0].innerText,
-                placas: celdas[1].innerText,
-                modelo: celdas[2].innerText,
-                color: celdas[3].innerText,
-                asunto: celdas[4].innerText,
-                noCasa: celdas[5].innerText,
-                horaEntrada: celdas[6].innerText,
-                horaSalida: horaSalidaExacta,
-                guardiaTurno: celdas[7].innerText
-            };
-
-            fila.remove();
-            agregarFilaAcceso(datosActualizados);
-            guardarRegistrosLocalStorage();
+            try {
+                const docRef = doc(db, "accesos", id);
+                await updateDoc(docRef, { horaSalida: horaSalidaExacta });
+            } catch (error) {
+                console.error("Error al marcar salida:", error);
+            }
         }
 
-        function guardarRegistrosLocalStorage() {
-            const registros = [];
-            document.querySelectorAll('#tablaActivos tr').forEach(fila => {
-                const cols = fila.querySelectorAll('td');
-                if (cols.length > 0) {
-                    registros.push({ 
-                        nombre: cols[0].innerText, 
-                        placas: cols[1].innerText, 
-                        modelo: cols[2].innerText, 
-                        color: cols[3].innerText, 
-                        asunto: cols[4].innerText, 
-                        noCasa: cols[5].innerText, 
-                        horaEntrada: cols[6].innerText, 
-                        horaSalida: '', 
-                        guardiaTurno: cols[7].innerText 
-                    });
-                }
-            });
-            document.querySelectorAll('#tablaHistorial tr').forEach(fila => {
-                const cols = fila.querySelectorAll('td');
-                if (cols.length > 0) {
-                    registros.push({ 
-                        nombre: cols[0].innerText, 
-                        placas: cols[1].innerText, 
-                        modelo: cols[2].innerText, 
-                        color: cols[3].innerText, 
-                        asunto: cols[4].innerText, 
-                        noCasa: cols[5].innerText, 
-                        horaEntrada: cols[6].innerText, 
-                        horaSalida: cols[7].innerText, 
-                        guardiaTurno: cols[8].innerText 
-                    });
-                }
-            });
-            localStorage.setItem('registros_recepcion', JSON.stringify(registros));
-        }
-
-        function cargarRegistrosLocalStorage() {
-            const guardados = JSON.parse(localStorage.getItem('registros_recepcion'));
-            if (guardados) guardados.forEach(item => agregarFilaAcceso(item));
-        }
-
-        // --- LÓGICA DE REPORTES / ASUNTOS ESPECIALES ---
-        formReporte.addEventListener('submit', function(e) {
+        // --- LÓGICA DE REPORTES / ASUNTOS ESPECIALES CON FIREBASE ---
+        formReporte.addEventListener('submit', async function(e) {
             e.preventDefault();
 
             const guardiaActivo = JSON.parse(localStorage.getItem('guardia_activo'));
@@ -531,25 +507,40 @@ thead {
                 estatus: 'Pendiente',
                 entregaInfo: ''
             };
-            agregarFilaReporte(nuevoReporte);
-            guardarReportesLocalStorage();
-            formReporte.reset();
 
-            const ahora = new Date();
-            const anio = ahora.getFullYear();
-            const mes = String(ahora.getMonth() + 1).padStart(2, '0');
-            const dia = String(ahora.getDate()).padStart(2, '0');
-            const horas = String(ahora.getHours()).padStart(2, '0');
-            const minutos = String(ahora.getMinutes()).padStart(2, '0');
-            document.getElementById('fechaReporte').value = `${anio}-${mes}-${dia}T${horas}:${minutos}`;
+            try {
+                await addDoc(collection(db, "reportes"), nuevoReporte);
+                formReporte.reset();
+
+                const ahora = new Date();
+                const anio = ahora.getFullYear();
+                const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+                const dia = String(ahora.getDate()).padStart(2, '0');
+                const horas = String(ahora.getHours()).padStart(2, '0');
+                const minutos = String(ahora.getMinutes()).padStart(2, '0');
+                document.getElementById('fechaReporte').value = `${anio}-${mes}-${dia}T${horas}:${minutos}`;
+            } catch (error) {
+                console.error("Error al guardar reporte:", error);
+            }
         });
 
-        function agregarFilaReporte(datos) {
+        function escucharReportesFirebase() {
+            onSnapshot(collection(db, "reportes"), (snapshot) => {
+                tablaReportes.innerHTML = '';
+                snapshot.forEach((docSnapshot) => {
+                    const datos = docSnapshot.data();
+                    const id = docSnapshot.id;
+                    agregarFilaReporte(datos, id);
+                });
+            });
+        }
+
+        function agregarFilaReporte(datos, id) {
             const fila = document.createElement('tr');
             
             let contenidoEstatus = '';
             if (datos.estatus === 'Pendiente') {
-                contenidoEstatus = `<button class="btn btn-outline-success btn-sm" onclick="marcarEntregado(this)">Marcar como Entregado</button>`;
+                contenidoEstatus = `<button class="btn btn-outline-success btn-sm" onclick="marcarEntregadoFirebase('${id}')">Marcar como Entregado</button>`;
             } else {
                 contenidoEstatus = `<span class="text-success small fw-semibold">Entregado<br><span class="text-muted">${datos.entregaInfo}</span></span>`;
             }
@@ -565,7 +556,7 @@ thead {
             tablaReportes.appendChild(fila);
         }
 
-        window.marcarEntregado = function(button) {
+        window.marcarEntregadoFirebase = async function(id) {
             const guardiaActivo = JSON.parse(localStorage.getItem('guardia_activo'));
             if (!guardiaActivo) {
                 alert('No hay ningún guardia autenticado. Por favor inicie sesión.');
@@ -580,47 +571,26 @@ thead {
             
             const infoEntrega = `Hora: ${fechaHoraEntrega} | Entregó: ${guardiaActivo.nombre} (Clave: ${guardiaActivo.clave})`;
 
-            const fila = button.closest('tr');
-            const celdas = fila.querySelectorAll('td');
-
-            celdas[5].innerHTML = `<span class="text-success small fw-semibold">Entregado<br><span class="text-muted">${infoEntrega}</span></span>`;
-
-            guardarReportesLocalStorage();
-        }
-
-        function guardarReportesLocalStorage() {
-            const reportes = [];
-            document.querySelectorAll('#tablaReportes tr').forEach(fila => {
-                const cols = fila.querySelectorAll('td');
-                if (cols.length > 0) {
-                    const estatusTexto = cols[5].innerText.includes('Entregado') ? 'Entregado' : 'Pendiente';
-                    const entregaDetalle = estatusTexto === 'Entregado' ? cols[5].querySelector('.text-muted').innerText : '';
-
-                    reportes.push({
-                        fecha: cols[0].innerText,
-                        tipo: cols[1].innerText,
-                        casa: cols[2].innerText,
-                        detalles: cols[3].innerText,
-                        guardiaTurno: cols[4].innerText,
-                        estatus: estatusTexto,
-                        entregaInfo: entregaDetalle
-                    });
-                }
-            });
-            localStorage.setItem('reportes_especiales', JSON.stringify(reportes));
-        }
-
-        function cargarReportesLocalStorage() {
-            const guardados = JSON.parse(localStorage.getItem('reportes_especiales'));
-            if (guardados) guardados.forEach(item => agregarFilaReporte(item));
+            try {
+                const docRef = doc(db, "reportes", id);
+                await updateDoc(docRef, {
+                    estatus: 'Entregado',
+                    entregaInfo: infoEntrega
+                });
+            } catch (error) {
+                console.error("Error al actualizar reporte:", error);
+            }
         }
 
         // --- EXPORTAR A EXCEL (CSV) ---
-        function exportarCSV() {
-            const guardados = JSON.parse(localStorage.getItem('registros_recepcion')) || [];
+        window.exportarCSV = async function() {
+            // Nota: Se puede exportar consultando los elementos actuales de la tabla
             let csv = 'Nombre,Placas,Modelo,Color,Asunto,No. Casa,Hora Entrada,Hora Salida,Guardia Turno\n';
-            guardados.forEach(item => {
-                csv += `"${item.nombre}","${item.placas}","${item.modelo}","${item.color}","${item.asunto}","${item.noCasa}","${item.horaEntrada}","${item.horaSalida || 'En sitio'}","${item.guardiaTurno || 'N/D'}"\n`;
+            document.querySelectorAll('#tablaHistorial tr').forEach(fila => {
+                const cols = fila.querySelectorAll('td');
+                if (cols.length > 0) {
+                    csv += `"${cols[0].innerText}","${cols[1].innerText}","${cols[2].innerText}","${cols[3].innerText}","${cols[4].innerText}","${cols[5].innerText}","${cols[6].innerText}","${cols[7].innerText}","${cols[8].innerText}"\n`;
+                }
             });
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
@@ -629,11 +599,13 @@ thead {
             link.click();
         }
 
-        function exportarReportesCSV() {
-            const guardados = JSON.parse(localStorage.getItem('reportes_especiales')) || [];
+        window.exportarReportesCSV = function() {
             let csv = 'Fecha Recepcion,Tipo,Casa o Zona,Descripcion,Guardia en Turno,Estatus,Detalles Entrega\n';
-            guardados.forEach(item => {
-                csv += `"${item.fecha}","${item.tipo}","${item.casa}","${item.detalles}","${item.guardiaTurno}","${item.estatus}","${item.entregaInfo}"\n`;
+            document.querySelectorAll('#tablaReportes tr').forEach(fila => {
+                const cols = fila.querySelectorAll('td');
+                if (cols.length > 0) {
+                    csv += `"${cols[0].innerText}","${cols[1].innerText}","${cols[2].innerText}","${cols[3].innerText}","${cols[4].innerText}","${cols[5].innerText.replace(/<[^>]*>/g, '')}"\n`;
+                }
             });
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
@@ -642,25 +614,19 @@ thead {
             link.click();
         }
 
-        // --- GENERAR PDF (NATIVO A TRAVÉS DE IMPRESIÓN LIMPIA) ---
-        function exportarPDF() {
-            window.print();
-        }
-
-        function exportarReportesPDF() {
-            window.print();
-        }
+        window.exportarPDF = function() { window.print(); }
+        window.exportarReportesPDF = function() { window.print(); }
     </script>
 
+    <!-- Script del Service Worker (PWA) -->
     <script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('Service Worker registrado con éxito:', reg.scope))
-        .catch(err => console.log('Error al registrar el Service Worker:', err));
-    });
-  }
-</script>
-
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker registrado con éxito:', reg.scope))
+            .catch(err => console.log('Error al registrar el Service Worker:', err));
+        });
+      }
+    </script>
 </body>
 </html>
