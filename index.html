@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Recepción y Accesos</title>
+    <!-- Enlaces necesarios para PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#212529">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AccesoSeguro">
+
+    <!-- Estilos de Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        .table-hover tbody tr:hover {
+            background-color: #f1f3f5;
+        }
+        .seccion-contenido {
+            display: none;
+        }
+        .seccion-contenido.activa {
+            display: block;
+        }
+
+        /* --- ESTILOS ESPECIALES PARA EXPORTAR E IMPRIMIR A PDF --- */
+        @media print {
+            body {
+                background-color: #fff !important;
+            }
+            /* Ocultar elementos que no deben salir en el PDF */
+            nav, .modal, form, .btn, .card-title, .navbar, hr {
+                display: none !important;
+            }
+            .card {
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .container {
+                max-width: 100% !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            /* Mostrar únicamente la sección activa que se mande a imprimir */
+            .seccion-contenido:not(.activa) {
+                display: none !important;
+            }
+            .seccion-contenido.activa {
+                display: block !important;
+            }
+            /* Estilo limpio para la tabla en el PDF */
+            table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+            }
+            th, td {
+                border: 1px solid #dee2e6 !important;
+                padding: 6px !important;
+                font-size: 9pt !important;
+            }
+thead {
+    background-color: #f8f9fa !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+}
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Barra de Navegación Superior -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand fw-bold d-flex align-items-center" href="#">
+                <img src="media/VILLA LOS RIOS LGO.png" alt="Logo" style="height: 35px; width: auto;" class="me-2">
+                Control de Accesos
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse justify-content-between" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <button class="nav-link btn text-white active fw-semibold px-3" onclick="cambiarSeccion('captura', this)">Captura de Datos</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link btn text-white-50 px-3" onclick="cambiarSeccion('historial', this)">Historial</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link btn text-white-50 px-3" onclick="cambiarSeccion('reportes', this)">Asuntos Especiales / Reportes</button>
+                    </li>
+                </ul>
+
+                <div class="d-flex align-items-center text-white gap-3 mt-2 mt-lg-0">
+                    <div id="infoGuardiaActivo" class="small bg-secondary px-3 py-1 rounded">
+                        <span class="text-warning">Guardia:</span> <span id="lblGuardiaNombre" class="fw-bold">No autenticado</span> (<span id="lblGuardiaClave">----</span>)
+                    </div>
+                    <button class="btn btn-outline-light btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#modalLogin">Cambiar Guardia</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Modal de Inicio de Sesión de Guardia -->
+    <div class="modal fade" id="modalLogin" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title">Identificación de Guardia en Turno</h5>
+                </div>
+                <div class="modal-body">
+                    <form id="loginForm">
+                        <div class="mb-3">
+                            <label for="inputGuardia" class="form-label">Nombre Completo del Guardia</label>
+                            <input type="text" class="form-control" id="inputGuardia" placeholder="Ej. Juan Pérez" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="inputClave" class="form-label">Número de Clave / Gafete</label>
+                            <input type="password" class="form-control" id="inputClave" placeholder="Ingrese su clave de acceso" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Iniciar Turno</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container my-5">
+
+        <!-- SECCIÓN 1: CAPTURA DE DATOS -->
+        <div id="seccion-captura" class="seccion-contenido activa">
+            <h2 class="mb-4 text-center fw-bold text-secondary">Registro y Accesos Activos</h2>
+
+            <div class="card mb-4 p-4 bg-white">
+                <h5 class="card-title mb-3 text-primary">Registrar Nueva Entrada</h5>
+                <form id="registroForm">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label for="nombre" class="form-label">Nombre Completo</label>
+                            <input type="text" class="form-control" id="nombre" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="placas" class="form-label">Placas</label>
+                            <input type="text" class="form-control" id="placas" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="modelo" class="form-label">Modelo</label>
+                            <input type="text" class="form-control" id="modelo" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="color" class="form-label">Color</label>
+                            <input type="text" class="form-control" id="color" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="asunto" class="form-label">Asunto / Motivo</label>
+                            <input type="text" class="form-control" id="asunto" required>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="noCasa" class="form-label">No. de Casa</label>
+                            <input type="text" class="form-control" id="noCasa" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="horaEntrada" class="form-label">Hora de Entrada (Automática)</label>
+                            <input type="time" class="form-control bg-light" id="horaEntrada" readonly required>
+                            <div class="form-text text-muted small">Se asigna la hora exacta al hacer clic en registrar.</div>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-success w-100">Agregar Registro</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card p-4 bg-white">
+                <h5 class="card-title mb-3 text-primary">En Sitio / Pendientes de Salida</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nombre Completo</th>
+                                <th>Placas</th>
+                                <th>Modelo</th>
+                                <th>Color</th>
+                                <th>Asunto</th>
+                                <th>No. Casa</th>
+                                <th>H. Entrada</th>
+                                <th>Guardia</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaActivos"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 2: HISTORIAL -->
+        <div id="seccion-historial" class="seccion-contenido">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="fw-bold text-secondary m-0">Historial de Accesos Finalizados</h2>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="exportarCSV()">Exportar a Excel (CSV)</button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="exportarPDF()">Generar PDF</button>
+                </div>
+            </div>
+
+            <div class="card p-4 bg-white">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nombre Completo</th>
+                                <th>Placas</th>
+                                <th>Modelo</th>
+                                <th>Color</th>
+                                <th>Asunto</th>
+                                <th>No. Casa</th>
+                                <th>H. Entrada</th>
+                                <th>H. Salida</th>
+                                <th>Guardia</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaHistorial"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 3: ASUNTOS ESPECIALES / REPORTES -->
+        <div id="seccion-reportes" class="seccion-contenido">
+            <h2 class="mb-4 text-center fw-bold text-secondary">Registro de Asuntos Especiales y Reportes</h2>
+
+            <div class="card mb-4 p-4 bg-white">
+                <h5 class="card-title mb-3 text-warning text-dark">Nuevo Reporte o Paquete / Incidente</h5>
+                <form id="reporteForm">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label for="fechaReporte" class="form-label">Fecha / Hora de Recepción</label>
+                            <input type="datetime-local" class="form-control" id="fechaReporte" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="tipoReporte" class="form-label">Tipo de Evento</label>
+                            <select class="form-select" id="tipoReporte" required>
+                                <option value="Paquetería / Entrega">Paquetería / Entrega</option>
+                                <option value="Incidente / Anomalía">Incidente / Anomalía</option>
+                                <option value="Visita Sin Registro previo">Visita Sin Registro</option>
+                                <option value="Otro">Otro Asunto</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="afectadoCasa" class="form-label">No. de Casa / Zona</label>
+                            <input type="text" class="form-control" id="afectadoCasa" placeholder="Ej. Casa 42 / General" required>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-warning w-100 text-dark fw-semibold">Registrar en Bitácora</button>
+                        </div>
+                        <div class="col-md-12">
+                            <label for="detallesReporte" class="form-label">Descripción Detallada (Ej. Guía de paquete, objeto, novedad)</label>
+                            <textarea class="form-control" id="detallesReporte" rows="2" placeholder="Especifique detalles relevantes..." required></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card p-4 bg-white">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title m-0 text-primary">Bitácora Inalterable (Pendientes y Entregados)</h5>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="exportarReportesCSV()">Exportar a Excel (CSV)</button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="exportarReportesPDF()">Generar PDF</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>F. Recepción</th>
+                                <th>Tipo</th>
+                                <th>Casa / Zona</th>
+                                <th>Descripción</th>
+                                <th>Guardia (Recibió)</th>
+                                <th>Estatus / Entrega</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaReportes"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Script de Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Script de Lógica -->
+    <script>
+        const formRegistro = document.getElementById('registroForm');
+        const formReporte = document.getElementById('reporteForm');
+        const loginForm = document.getElementById('loginForm');
+        const tablaActivos = document.getElementById('tablaActivos');
+        const tablaHistorial = document.getElementById('tablaHistorial');
+        const tablaReportes = document.getElementById('tablaReportes');
+
+        let modalLoginInstance;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            modalLoginInstance = new bootstrap.Modal(document.getElementById('modalLogin'));
+
+            const guardiaActivo = JSON.parse(localStorage.getItem('guardia_activo'));
+            if (!guardiaActivo) {
+                modalLoginInstance.show();
+            } else {
+                actualizarVistaGuardia(guardiaActivo);
+            }
+
+            // Inicializar la hora actual en el input y mantenerla corriendo en vivo
+            actualizarHoraActualInput();
+            setInterval(actualizarHoraActualInput, 1000);
+
+            const ahora = new Date();
+            const anio = ahora.getFullYear();
+            const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+            const dia = String(ahora.getDate()).padStart(2, '0');
+            const horas = String(ahora.getHours()).padStart(2, '0');
+            const minutos = String(ahora.getMinutes()).padStart(2, '0');
+            document.getElementById('fechaReporte').value = `${anio}-${mes}-${dia}T${horas}:${minutos}`;
+
+            cargarRegistrosLocalStorage();
+            cargarReportesLocalStorage();
+        });
+
+        function actualizarHoraActualInput() {
+            const ahora = new Date();
+            const horas = String(ahora.getHours()).padStart(2, '0');
+            const minutos = String(ahora.getMinutes()).padStart(2, '0');
+            document.getElementById('horaEntrada').value = `${horas}:${minutos}`;
+        }
+
+        loginForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const nombre = document.getElementById('inputGuardia').value.trim();
+            const clave = document.getElementById('inputClave').value.trim();
+
+            if (nombre === '' || clave === '') return;
+
+            const guardiaObj = { nombre, clave };
+            localStorage.setItem('guardia_activo', JSON.stringify(guardiaObj));
+
+            actualizarVistaGuardia(guardiaObj);
+            loginForm.reset();
+            modalLoginInstance.hide();
+        });
+
+        function actualizarVistaGuardia(guardia) {
+            document.getElementById('lblGuardiaNombre').innerText = guardia.nombre;
+            const claveOculta = '•'.repeat(guardia.clave.length);
+            document.getElementById('lblGuardiaClave').innerText = claveOculta;
+        }
+
+        function cambiarSeccion(seccion, elemento) {
+            document.querySelectorAll('.seccion-contenido').forEach(el => el.classList.remove('activa'));
+            document.querySelectorAll('.navbar-nav .nav-link').forEach(el => {
+                el.classList.remove('active', 'fw-semibold');
+                el.classList.add('text-white-50');
+            });
+
+            document.getElementById(`seccion-${seccion}`).classList.add('activa');
+            elemento.classList.add('active', 'fw-semibold');
+            elemento.classList.remove('text-white-50');
+        }
+
+        // --- LÓGICA DE ACCESOS ---
+        formRegistro.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const guardiaActivo = JSON.parse(localStorage.getItem('guardia_activo'));
+            if (!guardiaActivo) {
+                alert('No hay ningún guardia autenticado. Por favor inicie sesión.');
+                modalLoginInstance.show();
+                return;
+            }
+
+            // Capturar la hora exacta del sistema en el preciso instante de enviar el formulario
+            const ahoraExacto = new Date();
+            const horaActualSistema = `${String(ahoraExacto.getHours()).padStart(2, '0')}:${String(ahoraExacto.getMinutes()).padStart(2, '0')}`;
+
+            const nuevoRegistro = {
+                nombre: document.getElementById('nombre').value,
+                placas: document.getElementById('placas').value,
+                modelo: document.getElementById('modelo').value,
+                color: document.getElementById('color').value,
+                asunto: document.getElementById('asunto').value,
+                noCasa: document.getElementById('noCasa').value,
+                horaEntrada: horaActualSistema, // Se usa la hora exacta del clic
+                horaSalida: '',
+                guardiaTurno: `${guardiaActivo.nombre} (Clave: ${guardiaActivo.clave})`
+            };
+            agregarFilaAcceso(nuevoRegistro);
+            guardarRegistrosLocalStorage();
+            formRegistro.reset();
+        });
+
+        function agregarFilaAcceso(datos) {
+            const fila = document.createElement('tr');
+            if (datos.horaSalida === '') {
+                fila.innerHTML = `
+                    <td>${datos.nombre}</td>
+                    <td><span class="badge bg-light text-dark border">${datos.placas}</span></td>
+                    <td>${datos.modelo}</td>
+                    <td>${datos.color}</td>
+                    <td>${datos.asunto}</td>
+                    <td><strong>${datos.noCasa}</strong></td>
+                    <td>${datos.horaEntrada}</td>
+                    <td><span class="small fw-semibold text-dark">${datos.guardiaTurno}</span></td>
+                    <td><button class="btn btn-outline-danger btn-sm" onclick="registrarSalida(this)">Marcar Salida</button></td>
+                `;
+                tablaActivos.appendChild(fila);
+            } else {
+                fila.innerHTML = `
+                    <td>${datos.nombre}</td>
+                    <td><span class="badge bg-light text-dark border">${datos.placas}</span></td>
+                    <td>${datos.modelo}</td>
+                    <td>${datos.color}</td>
+                    <td>${datos.asunto}</td>
+                    <td><strong>${datos.noCasa}</strong></td>
+                    <td>${datos.horaEntrada}</td>
+                    <td><span class="badge bg-secondary">${datos.horaSalida}</span></td>
+                    <td><span class="small fw-semibold text-dark">${datos.guardiaTurno}</span></td>
+                `;
+                tablaHistorial.appendChild(fila);
+            }
+        }
+
+        window.registrarSalida = function(button) {
+            const fila = button.closest('tr');
+            const celdas = fila.querySelectorAll('td');
+
+            const ahoraSalida = new Date();
+            const horaSalidaExacta = `${String(ahoraSalida.getHours()).padStart(2, '0')}:${String(ahoraSalida.getMinutes()).padStart(2, '0')}`;
+
+            const datosActualizados = {
+                nombre: celdas[0].innerText,
+                placas: celdas[1].innerText,
+                modelo: celdas[2].innerText,
+                color: celdas[3].innerText,
+                asunto: celdas[4].innerText,
+                noCasa: celdas[5].innerText,
+                horaEntrada: celdas[6].innerText,
+                horaSalida: horaSalidaExacta,
+                guardiaTurno: celdas[7].innerText
+            };
+
+            fila.remove();
+            agregarFilaAcceso(datosActualizados);
+            guardarRegistrosLocalStorage();
+        }
+
+        function guardarRegistrosLocalStorage() {
+            const registros = [];
+            document.querySelectorAll('#tablaActivos tr').forEach(fila => {
+                const cols = fila.querySelectorAll('td');
+                if (cols.length > 0) {
+                    registros.push({ 
+                        nombre: cols[0].innerText, 
+                        placas: cols[1].innerText, 
+                        modelo: cols[2].innerText, 
+                        color: cols[3].innerText, 
+                        asunto: cols[4].innerText, 
+                        noCasa: cols[5].innerText, 
+                        horaEntrada: cols[6].innerText, 
+                        horaSalida: '', 
+                        guardiaTurno: cols[7].innerText 
+                    });
+                }
+            });
+            document.querySelectorAll('#tablaHistorial tr').forEach(fila => {
+                const cols = fila.querySelectorAll('td');
+                if (cols.length > 0) {
+                    registros.push({ 
+                        nombre: cols[0].innerText, 
+                        placas: cols[1].innerText, 
+                        modelo: cols[2].innerText, 
+                        color: cols[3].innerText, 
+                        asunto: cols[4].innerText, 
+                        noCasa: cols[5].innerText, 
+                        horaEntrada: cols[6].innerText, 
+                        horaSalida: cols[7].innerText, 
+                        guardiaTurno: cols[8].innerText 
+                    });
+                }
+            });
+            localStorage.setItem('registros_recepcion', JSON.stringify(registros));
+        }
+
+        function cargarRegistrosLocalStorage() {
+            const guardados = JSON.parse(localStorage.getItem('registros_recepcion'));
+            if (guardados) guardados.forEach(item => agregarFilaAcceso(item));
+        }
+
+        // --- LÓGICA DE REPORTES / ASUNTOS ESPECIALES ---
+        formReporte.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const guardiaActivo = JSON.parse(localStorage.getItem('guardia_activo'));
+            if (!guardiaActivo) {
+                alert('No hay ningún guardia autenticado. Por favor inicie sesión.');
+                modalLoginInstance.show();
+                return;
+            }
+
+            const nuevoReporte = {
+                fecha: document.getElementById('fechaReporte').value.replace('T', ' '),
+                tipo: document.getElementById('tipoReporte').value,
+                casa: document.getElementById('afectadoCasa').value,
+                detalles: document.getElementById('detallesReporte').value,
+                guardiaTurno: `${guardiaActivo.nombre} (Clave: ${guardiaActivo.clave})`,
+                estatus: 'Pendiente',
+                entregaInfo: ''
+            };
+            agregarFilaReporte(nuevoReporte);
+            guardarReportesLocalStorage();
+            formReporte.reset();
+
+            const ahora = new Date();
+            const anio = ahora.getFullYear();
+            const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+            const dia = String(ahora.getDate()).padStart(2, '0');
+            const horas = String(ahora.getHours()).padStart(2, '0');
+            const minutos = String(ahora.getMinutes()).padStart(2, '0');
+            document.getElementById('fechaReporte').value = `${anio}-${mes}-${dia}T${horas}:${minutos}`;
+        });
+
+        function agregarFilaReporte(datos) {
+            const fila = document.createElement('tr');
+            
+            let contenidoEstatus = '';
+            if (datos.estatus === 'Pendiente') {
+                contenidoEstatus = `<button class="btn btn-outline-success btn-sm" onclick="marcarEntregado(this)">Marcar como Entregado</button>`;
+            } else {
+                contenidoEstatus = `<span class="text-success small fw-semibold">Entregado<br><span class="text-muted">${datos.entregaInfo}</span></span>`;
+            }
+
+            fila.innerHTML = `
+                <td>${datos.fecha}</td>
+                <td><span class="badge bg-warning text-dark">${datos.tipo}</span></td>
+                <td><strong>${datos.casa}</strong></td>
+                <td>${datos.detalles}</td>
+                <td><span class="fw-semibold text-dark">${datos.guardiaTurno}</span></td>
+                <td>${contenidoEstatus}</td>
+            `;
+            tablaReportes.appendChild(fila);
+        }
+
+        window.marcarEntregado = function(button) {
+            const guardiaActivo = JSON.parse(localStorage.getItem('guardia_activo'));
+            if (!guardiaActivo) {
+                alert('No hay ningún guardia autenticado. Por favor inicie sesión.');
+                modalLoginInstance.show();
+                return;
+            }
+
+            const ahora = new Date();
+            const horas = String(ahora.getHours()).padStart(2, '0');
+            const minutos = String(ahora.getMinutes()).padStart(2, '0');
+            const fechaHoraEntrega = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')} ${horas}:${minutos}`;
+            
+            const infoEntrega = `Hora: ${fechaHoraEntrega} | Entregó: ${guardiaActivo.nombre} (Clave: ${guardiaActivo.clave})`;
+
+            const fila = button.closest('tr');
+            const celdas = fila.querySelectorAll('td');
+
+            celdas[5].innerHTML = `<span class="text-success small fw-semibold">Entregado<br><span class="text-muted">${infoEntrega}</span></span>`;
+
+            guardarReportesLocalStorage();
+        }
+
+        function guardarReportesLocalStorage() {
+            const reportes = [];
+            document.querySelectorAll('#tablaReportes tr').forEach(fila => {
+                const cols = fila.querySelectorAll('td');
+                if (cols.length > 0) {
+                    const estatusTexto = cols[5].innerText.includes('Entregado') ? 'Entregado' : 'Pendiente';
+                    const entregaDetalle = estatusTexto === 'Entregado' ? cols[5].querySelector('.text-muted').innerText : '';
+
+                    reportes.push({
+                        fecha: cols[0].innerText,
+                        tipo: cols[1].innerText,
+                        casa: cols[2].innerText,
+                        detalles: cols[3].innerText,
+                        guardiaTurno: cols[4].innerText,
+                        estatus: estatusTexto,
+                        entregaInfo: entregaDetalle
+                    });
+                }
+            });
+            localStorage.setItem('reportes_especiales', JSON.stringify(reportes));
+        }
+
+        function cargarReportesLocalStorage() {
+            const guardados = JSON.parse(localStorage.getItem('reportes_especiales'));
+            if (guardados) guardados.forEach(item => agregarFilaReporte(item));
+        }
+
+        // --- EXPORTAR A EXCEL (CSV) ---
+        function exportarCSV() {
+            const guardados = JSON.parse(localStorage.getItem('registros_recepcion')) || [];
+            let csv = 'Nombre,Placas,Modelo,Color,Asunto,No. Casa,Hora Entrada,Hora Salida,Guardia Turno\n';
+            guardados.forEach(item => {
+                csv += `"${item.nombre}","${item.placas}","${item.modelo}","${item.color}","${item.asunto}","${item.noCasa}","${item.horaEntrada}","${item.horaSalida || 'En sitio'}","${item.guardiaTurno || 'N/D'}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `historial_accesos_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+        }
+
+        function exportarReportesCSV() {
+            const guardados = JSON.parse(localStorage.getItem('reportes_especiales')) || [];
+            let csv = 'Fecha Recepcion,Tipo,Casa o Zona,Descripcion,Guardia en Turno,Estatus,Detalles Entrega\n';
+            guardados.forEach(item => {
+                csv += `"${item.fecha}","${item.tipo}","${item.casa}","${item.detalles}","${item.guardiaTurno}","${item.estatus}","${item.entregaInfo}"\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `reportes_especiales_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+        }
+
+        // --- GENERAR PDF (NATIVO A TRAVÉS DE IMPRESIÓN LIMPIA) ---
+        function exportarPDF() {
+            window.print();
+        }
+
+        function exportarReportesPDF() {
+            window.print();
+        }
+    </script>
+</body>
+</html>
